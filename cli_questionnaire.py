@@ -1,108 +1,79 @@
+
 from datetime import date
-from typing import Optional
 from pydantic import ValidationError
 from models import TravelQuestionnaire
 
-VALID_BUDGETS = ("اقتصادی", "متوسط", "لوکس")
-VALID_COMPANIONS = ("انفرادی", "زوج", "خانواده", "دوستان")
-
-
-def prompt_input(message: str) -> str:
-    """دریافت ورودی با امکان خروج در هر مرحله"""
-    value = input(message).strip()
-    if value.lower() in ("exit", "خروج"):
-        raise SystemExit("\nخروج از پرسش‌نامه توسط کاربر.")
-    return value
-
 
 def parse_list(raw_text: str) -> list[str]:
+    """تبدیل متن جداشده با کاما یا ویرگول فارسی به لیست"""
     normalized = raw_text.replace("،", ",")
     return [item.strip() for item in normalized.split(",") if item.strip()]
 
 
-def ask_date(message: str) -> date:
+def ask_questionnaire() -> TravelQuestionnaire:
+    print("=== پرسش‌نامه برنامه‌ریز هوشمند سفر ===\n")
+
     while True:
-        raw = prompt_input(message)
         try:
-            return date.fromisoformat(raw)
-        except ValueError:
-            print("❌ فرمت تاریخ نامعتبر است. فرمت صحیح: YYYY-MM-DD (مثال: 2026-12-01)")
+            start_str = input("تاریخ شروع سفر (مثال 2026-12-01): ").strip()
+            end_str = input("تاریخ پایان سفر (مثال 2026-12-04): ").strip()
 
+            origin_city = input("شهر مبدأ: ").strip()
 
-def ask_choice(message: str, options: tuple[str, ...]) -> str:
-    options_str = " | ".join(options)
-    while True:
-        val = prompt_input(f"{message} ({options_str}): ")
-        if val in options:
-            return val
-        print(f"❌ مقدار غیرمجاز. لطفاً یکی از این گزینه‌ها را وارد کنید: {options_str}")
+            dest_input = input(
+                "شهر مقصد (اختیاری - برای خالی گذاشتن Enter بزنید): "
+            ).strip()
 
+            destination_city = dest_input if dest_input else None
 
-def ask_non_empty(message: str) -> str:
-    while True:
-        val = prompt_input(message)
-        if val:
-            return val
-        print("❌ این فیلد نمی‌تواند خالی باشد.")
+            print("\nسطح بودجه مجاز: اقتصادی | متوسط | لوکس")
+            budget_level = input("سطح بودجه: ").strip()
 
+            interests_raw = input(
+                "علاقه‌مندی‌ها (با ویرگول جدا کنید): "
+            )
+            interests = parse_list(interests_raw)
 
-def ask_questionnaire() -> Optional[TravelQuestionnaire]:
-    print("=== پرسش‌نامه برنامه‌ریز هوشمند سفر ===")
-    print("(برای خروج در هر مرحله، کلمه 'خروج' یا 'exit' را وارد کنید)\n")
+            print("\nنوع همراهان مجاز: انفرادی | زوج | خانواده | دوستان")
+            companions = input("نوع همراهان: ").strip()
 
-    # ۱. تاریخ شروع و پایان (با بررسی ترتیب و حداکثر ۱۴ روز)
-    while True:
-        start_date = ask_date("تاریخ شروع سفر (مثال 2026-12-01): ")
-        end_date = ask_date("تاریخ پایان سفر (مثال 2026-12-04): ")
-        if end_date < start_date:
-            print("❌ تاریخ پایان نمی‌تواند قبل از تاریخ شروع باشد. دوباره وارد کنید.")
-            continue
-        if (end_date - start_date).days + 1 > 14:
-            print("❌ حداکثر مدت سفر در نسخه اول ۱۴ روز است. دوباره وارد کنید.")
-            continue
-        break
+            if companions not in ["انفرادی", "زوج", "خانواده", "دوستان"]:
+                raise ValueError("نوع همراهان باید یکی از مقادیر مجاز باشد.")
 
-    # ۲. شهر مبدأ و مقصد
-    origin_city = ask_non_empty("شهر مبدأ: ")
-    dest_raw = prompt_input("شهر مقصد (اختیاری - برای خالی گذاشتن Enter بزنید): ")
-    destination_city = dest_raw if dest_raw else None
+            food_raw = input(
+                "ترجیحات غذایی (اختیاری - با ویرگول جدا کنید): "
+            )
+            food_preferences = parse_list(food_raw)
 
-    # ۳. بودجه و همراهان
-    budget_level = ask_choice("سطح بودجه", VALID_BUDGETS)
-    companions = ask_choice("نوع همراهان", VALID_COMPANIONS)
+            questionnaire = TravelQuestionnaire(
+                start_date=date.fromisoformat(start_str),
+                end_date=date.fromisoformat(end_str),
+                origin_city=origin_city,
+                destination_city=destination_city,
+                budget_level=budget_level,
+                interests=interests,
+                companions=companions,
+                food_preferences=food_preferences,
+            )
 
-    # ۴. علاقه‌مندی‌ها (حداقل یک مورد)
-    while True:
-        interests = parse_list(prompt_input("علاقه‌مندی‌ها (با ویرگول جدا کنید، مثال: تاریخی، طبیعت‌گردی): "))
-        if interests:
-            break
-        print("❌ حداقل یک علاقه‌مندی باید وارد کنید.")
+            return questionnaire
 
-    # ۵. ترجیحات غذایی (اختیاری)
-    food_preferences = parse_list(prompt_input("ترجیحات غذایی (اختیاری - با ویرگول جدا کنید): "))
+        except ValidationError as e:
+            print("\n❌ اطلاعات واردشده معتبر نیست:")
 
-    # اعتبارسنجی نهایی با Pydantic
-    try:
-        return TravelQuestionnaire(
-            start_date=start_date,
-            end_date=end_date,
-            origin_city=origin_city,
-            destination_city=destination_city,
-            budget_level=budget_level,
-            interests=interests,
-            companions=companions,
-            food_preferences=food_preferences,
-        )
-    except ValidationError as e:
-        print("\n❌ خطای غیرمنتظره در اعتبارسنجی:", e)
-        return None
+            for err in e.errors():
+                field = " -> ".join(str(loc) for loc in err["loc"])
+                print(f"  - {field}: {err['msg']}")
+
+            print("لطفاً دوباره اطلاعات را وارد کنید.\n")
+
+        except ValueError as ve:
+            print(f"\n❌ خطا: {ve}")
+            print("لطفاً دوباره اطلاعات را وارد کنید.\n")
 
 
 if __name__ == "__main__":
-    try:
-        result = ask_questionnaire()
-        if result:
-            print("\n✅ پرسش‌نامه با موفقیت ثبت شد:")
-            print(result.model_dump_json(indent=2))
-    except SystemExit as e:
-        print(e)
+    result = ask_questionnaire()
+
+    print("\n✅ پرسش‌نامه با موفقیت ثبت و اعتبارسنجی شد:")
+    print(result.model_dump_json(indent=2))
